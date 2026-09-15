@@ -16,3 +16,15 @@ backend/target/
 # Expo logs
 mobile/.expo/
 .expo/
+# Backups de iteração
+*.bak
+*.bak2
+*.bak3
+*.broken
+*.snippet-broken.bak
+*.pre-detection.bak
+
+# Runtime
+mobile/.expo/
+.expo/
+*.log
