@@ -178,14 +178,46 @@ pub async fn collect(
         if auto_remediate {
             if ctx.recommended_action == "ISOLATE_HOST" {
                 if let Some(hostname) = event.hostname.as_deref() {
-                    sqlx::query(
+                    let tenant = tenant_id.expect("tenant must exist for SOAR");
+
+                    // 1) tenta isolar asset existente
+                    let affected = sqlx::query(
                         "UPDATE assets SET status = 'ISOLATED', updated_at = NOW() \
                          WHERE tenant_id = $1 AND hostname = $2",
                     )
-                    .bind(tenant_id)
+                    .bind(tenant)
                     .bind(hostname)
                     .execute(db)
-                    .await?;
+                    .await?
+                    .rows_affected();
+
+                    // 2) se não existia, cria como ISOLATED direto (auto-registro)
+                    if affected == 0 {
+                        sqlx::query(
+                            "INSERT INTO assets (tenant_id, hostname, status, metadata) \
+                             VALUES ($1, $2, 'ISOLATED', $3)",
+                        )
+                        .bind(tenant)
+                        .bind(hostname)
+                        .bind(serde_json::json!({
+                            "auto_registered": true,
+                            "reason": "soar_isolate_unknown_host",
+                            "event_id": event.id
+                        }))
+                        .execute(db)
+                        .await?;
+
+                        tracing::warn!(
+                            hostname = %hostname,
+                            "unknown host auto-registered and isolated by SOAR"
+                        );
+                    }
+
+                    tracing::info!(
+                        hostname = %hostname,
+                        affected,
+                        "SOAR isolate_host executed"
+                    );
                 }
             }
 
@@ -211,6 +243,18 @@ pub async fn collect(
             .execute(db)
             .await?;
         }
+    }
+
+    // Se o evento foi promovido a incidente, o UPDATE em processed mudou o
+    // estado no banco. Relê para que a resposta reflita a verdade.
+    if is_alert {
+        let refreshed = sqlx::query_as::<_, SecurityEvent>(
+            "SELECT * FROM security_events WHERE id = $1",
+        )
+        .bind(event.id)
+        .fetch_one(db)
+        .await?;
+        return Ok(refreshed);
     }
 
     Ok(event)
