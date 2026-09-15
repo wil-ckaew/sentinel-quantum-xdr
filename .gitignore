@@ -13,3 +13,6 @@ backend/target/
 *.bak2
 *.snippet-broken.bak
 *.pre-detection.bak
+# Expo logs
+mobile/.expo/
+.expo/
