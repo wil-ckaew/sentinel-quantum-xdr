@@ -1,4 +1,47 @@
 services:
+# Snippet para ADICIONAR ao seu docker-compose.yml existente.
+# Não substitui o arquivo inteiro — cole os serviços abaixo da seção `services:`.
+
+  ml-inference:
+    build:
+      context: ./ml-inference
+    container_name: sentinel-ml-inference
+    environment:
+      MODEL_PATH: /app/models/model.onnx
+      FEATURE_DIM: "256"
+      RUST_LOG: info
+    volumes:
+      - ./ml-inference/models:/app/models:ro
+    expose:
+      - "5000"
+    networks:
+      - default
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5000/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+
+  detection-service:
+    build:
+      context: ./backend/detection-service
+    container_name: sentinel-detection-service
+    depends_on:
+      ml-inference:
+        condition: service_healthy
+    environment:
+      PORT: "8090"
+      ML_API_URL: http://ml-inference:5000
+      ML_TIMEOUT_SECS: "5"
+      RULE_THRESHOLD: "0.70"
+      RUST_LOG: info
+    ports:
+      - "8090:8090"
+    networks:
+      - default
+    restart: unless-stopped
+
   postgres:
     image: postgres:16-alpine
     volumes:
@@ -23,11 +66,6 @@ services:
     image: redis:7-alpine
     ports:
       - "${REDIS_PORT:-6379}:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
@@ -43,47 +81,6 @@ services:
       timeout: 5s
       retries: 10
 
-  ml-inference:
-    build:
-      context: ./ml-inference
-    container_name: sentinel-ml-inference
-    environment:
-      MODEL_PATH: /app/models/model.onnx
-      FEATURE_DIM: "256"
-      RUST_LOG: info
-    volumes:
-      - ./ml-inference/models:/app/models:ro
-    expose:
-      - "5000"
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:5000/health"]
-      interval: 15s
-      timeout: 3s
-      retries: 5
-
-  detection-service:
-    build:
-      context: ./backend/detection-service
-    container_name: sentinel-detection-service
-    depends_on:
-      ml-inference:
-        condition: service_healthy
-    environment:
-      PORT: "8090"
-      ML_API_URL: http://ml-inference:5000
-      ML_TIMEOUT_SECS: "5"
-      RULE_THRESHOLD: "0.70"
-      RUST_LOG: info
-    ports:
-      - "8090:8090"
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8090/health"]
-      interval: 15s
-      timeout: 3s
-      retries: 5
-
   gateway:
     build:
       context: ./backend/gateway
@@ -96,17 +93,13 @@ services:
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-sentinel}:${RABBITMQ_PASSWORD:-sentinel}@rabbitmq:5672/%2f
       TENANT_ID: ${TENANT_ID:-}
       DETECTION_SERVICE_URL: http://detection-service:8090
-      DETECTION_SERVICE_TIMEOUT_SECS: "3"
-      BIND_ADDRESS: "0.0.0.0:8080"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
+        condition: service_started
       rabbitmq:
         condition: service_healthy
-      detection-service:
-        condition: service_started
 
   frontend:
     build:
@@ -118,6 +111,15 @@ services:
     depends_on:
       - gateway
 
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      - gateway
+
   mobile:
     build:
       context: ./mobile
@@ -126,15 +128,6 @@ services:
     container_name: sentinel-mobile
     ports:
       - "${MOBILE_PORT:-8081}:8081"
-    depends_on:
-      - gateway
-
-  prometheus:
-    image: prom/prometheus:latest
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
-    ports:
-      - "${PROMETHEUS_PORT:-9090}:9090"
     depends_on:
       - gateway
 

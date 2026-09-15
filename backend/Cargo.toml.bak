@@ -9,8 +9,7 @@ members = [
     "quantum-service",
     "soar-engine",
     "threat-intel",
-    "auth-service",
-    "detection-service"
+    "auth-service"
 ]
 
 [workspace.package]

@@ -1,10 +1,12 @@
+// backend/gateway/src/events/collector.rs
 use anyhow::Result;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::detection;
+use crate::detection::HybridDetection;
 use crate::models::security_event::SecurityEvent;
 
+#[allow(clippy::too_many_arguments)]
 pub async fn collect(
     db: &PgPool,
     tenant_id: Option<Uuid>,
@@ -14,12 +16,12 @@ pub async fn collect(
     severity: &str,
     event_type: &str,
     category: Option<&str>,
-    is_attack: bool,
+    detection: &HybridDetection,
     auto_remediate: bool,
     message: Option<&str>,
     payload: serde_json::Value,
 ) -> Result<SecurityEvent> {
-
+    // --- 1. INSERT do evento ---------------------------------------------
     let event = sqlx::query_as::<_, SecurityEvent>(
         r#"
         INSERT INTO security_events
@@ -37,7 +39,7 @@ pub async fn collect(
         VALUES
         ($1,$2,$3,$4,$5,$6,$7,$8,$9)
         RETURNING *
-        "#
+        "#,
     )
     .bind(tenant_id)
     .bind(source)
@@ -51,12 +53,10 @@ pub async fn collect(
     .fetch_one(db)
     .await?;
 
-    let detection = detection::classify(
-        &event.event_type,
-        event.category.as_deref(),
-        &event.severity,
-        is_attack,
-    );
+    // --- 2. deteccao ja veio pronta do handler ---------------------------
+    let ctx = &detection.context;
+
+    // --- 3. threat intel lookup ------------------------------------------
     let threat_match = sqlx::query_scalar::<_, String>(
         r#"
         SELECT indicator_value
@@ -72,6 +72,8 @@ pub async fn collect(
     .bind(hostname.unwrap_or(""))
     .fetch_optional(db)
     .await?;
+
+    // --- 4. correlacao (eventos relacionados nos ultimos 10 min) ---------
     let related_events = sqlx::query_scalar::<_, i64>(
         r#"
         SELECT COUNT(*)
@@ -93,22 +95,30 @@ pub async fn collect(
     .bind(&event.event_type)
     .fetch_one(db)
     .await?;
-    let is_alert = detection.attack || threat_match.is_some() || related_events >= 2;
+
+    // --- 5. decide se promove a incidente --------------------------------
+    let is_alert = ctx.attack || threat_match.is_some() || related_events >= 2;
 
     let incident_metadata = serde_json::json!({
         "event_id": event.id,
         "hostname": event.hostname,
         "correlation_count": related_events + 1,
         "mitre": {
-            "tactic": detection.tactic.clone(),
-            "technique_id": detection.technique_id.clone(),
-            "technique": detection.technique.clone(),
-            "confidence": detection.confidence
+            "tactic": ctx.tactic.clone(),
+            "technique_id": ctx.technique_id.clone(),
+            "technique": ctx.technique.clone(),
+            "confidence": ctx.confidence
         },
-        "playbook": detection.recommended_action.clone()
+        "playbook": ctx.recommended_action.clone(),
+        "detection": {
+            "score": detection.score,
+            "source": format!("{:?}", detection.source),
+            "mitre_all": detection.mitre.clone()
+        }
     });
 
     if is_alert {
+        // 5a. cria o incidente
         let incident_id = sqlx::query_scalar::<_, Uuid>(
             r#"
             INSERT INTO incidents
@@ -118,19 +128,29 @@ pub async fn collect(
             "#,
         )
         .bind(tenant_id.expect("event tenant must be configured"))
-        .bind(if let Some(indicator) = threat_match {
+        .bind(if let Some(indicator) = &threat_match {
             format!("Threat intelligence match: {}", indicator)
         } else {
-            format!("{} detected [{}]", event.event_type.replace('_', " "), detection.technique_id)
+            format!(
+                "{} detected [{}]",
+                event.event_type.replace('_', " "),
+                ctx.technique_id
+            )
         })
         .bind(event.message.clone())
         .bind(&event.severity)
-        .bind(event.category.clone().or_else(|| Some("detection".to_string())))
+        .bind(
+            event
+                .category
+                .clone()
+                .or_else(|| Some("detection".to_string())),
+        )
         .bind(&event.source)
         .bind(&incident_metadata)
         .fetch_one(db)
         .await?;
 
+        // 5b. vincula evento ao incidente
         sqlx::query(
             "INSERT INTO incident_events (incident_id, security_event_id) VALUES ($1, $2)",
         )
@@ -141,21 +161,26 @@ pub async fn collect(
 
         tracing::info!(
             incident_id = %incident_id,
-            technique = %detection.technique_id,
+            technique = %ctx.technique_id,
+            confidence = ctx.confidence,
             related_events,
+            source = ?detection.source,
             "security event promoted to incident"
         );
 
+        // 5c. marca o evento como processado
         sqlx::query("UPDATE security_events SET processed = TRUE WHERE id = $1")
             .bind(event.id)
             .execute(db)
             .await?;
 
+        // 5d. SOAR automatico (se solicitado)
         if auto_remediate {
-            if detection.recommended_action == "ISOLATE_HOST" {
+            if ctx.recommended_action == "ISOLATE_HOST" {
                 if let Some(hostname) = event.hostname.as_deref() {
                     sqlx::query(
-                        "UPDATE assets SET status = 'ISOLATED', updated_at = NOW() WHERE tenant_id = $1 AND hostname = $2",
+                        "UPDATE assets SET status = 'ISOLATED', updated_at = NOW() \
+                         WHERE tenant_id = $1 AND hostname = $2",
                     )
                     .bind(tenant_id)
                     .bind(hostname)
@@ -165,16 +190,23 @@ pub async fn collect(
             }
 
             sqlx::query(
-                "INSERT INTO audit_logs (tenant_id, user_id, action, resource, metadata) VALUES ($1, NULL, $2, $3, $4)",
+                "INSERT INTO audit_logs (tenant_id, user_id, action, resource, metadata) \
+                 VALUES ($1, NULL, $2, $3, $4)",
             )
             .bind(tenant_id)
-            .bind(format!("SOAR_{}", detection.recommended_action))
-            .bind(event.hostname.clone().unwrap_or_else(|| event.source.clone()))
+            .bind(format!("SOAR_{}", ctx.recommended_action))
+            .bind(
+                event
+                    .hostname
+                    .clone()
+                    .unwrap_or_else(|| event.source.clone()),
+            )
             .bind(serde_json::json!({
                 "event_id": event.id,
                 "incident_id": incident_id,
-                "playbook": detection.recommended_action,
-                "automatic": true
+                "playbook": ctx.recommended_action,
+                "automatic": true,
+                "detection_source": format!("{:?}", detection.source)
             }))
             .execute(db)
             .await?;
@@ -186,4 +218,6 @@ pub async fn collect(
 
 #[cfg(test)]
 mod tests {
+    // Testes de integracao com DB ficam em tests/.
+    // Este modulo cobre apenas logica pura se necessario.
 }
