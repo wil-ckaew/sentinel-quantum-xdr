@@ -53,13 +53,21 @@ pub struct SecurityEventRequest {
     pub is_attack: Option<bool>,
     pub auto_remediate: Option<bool>,
     pub message: Option<String>,
+    #[serde(default = "default_payload")]
     pub payload: serde_json::Value,
     /// Texto cru para analise ML. Se ausente, usa o `payload` serializado.
+    #[serde(default)]
     pub payload_text: Option<String>,
-    /// MIME type, se conhecido. Ajuda a heuristica.
+    /// MIME type, se conhecido.
+    #[serde(default)]
     pub mime: Option<String>,
     /// Tamanho em bytes, se conhecido.
+    #[serde(default)]
     pub size: Option<u64>,
+}
+
+fn default_payload() -> serde_json::Value {
+    serde_json::json!({})
 }
 
 // =============================================================================
@@ -70,16 +78,16 @@ pub async fn collect_event(
     State(state): State<AppState>,
     Json(payload): Json<SecurityEventRequest>,
 ) -> Result<Json<SecurityEvent>, (StatusCode, String)> {
-    // --- 1. metrica: evento recebido -------------------------------------
+    // --- 1. metrica: evento recebido ---
     metrics::EVENTS_TOTAL.fetch_add(1, Ordering::Relaxed);
 
-    // --- 2. prepara payload efetivo para deteccao ------------------------
+    // --- 2. payload efetivo para deteccao ---
     let payload_text = payload
         .payload_text
         .clone()
         .unwrap_or_else(|| payload.payload.to_string());
 
-    // --- 3. roda deteccao hibrida (regras + ML) --------------------------
+    // --- 3. deteccao hibrida ---
     let hybrid = crate::detection::classify_hybrid(
         state.detection_client.as_deref(),
         &payload.event_type,
@@ -90,18 +98,15 @@ pub async fn collect_event(
         &payload.source,
         payload.mime.as_deref(),
         payload.size,
-        80, // local_threshold: se confidence local >= 80, ML nao e chamado
+        80,
     )
     .await;
 
-    // --- 4. metricas de deteccao -----------------------------------------
+    // --- 4. metricas de deteccao ---
     metrics::DETECTIONS_TOTAL.fetch_add(1, Ordering::Relaxed);
 
-    match hybrid.source {
-        DetectionSource::LocalFallback => {
-            metrics::DETECTION_FALLBACKS.fetch_add(1, Ordering::Relaxed);
-        }
-        _ => {}
+    if let DetectionSource::LocalFallback = hybrid.source {
+        metrics::DETECTION_FALLBACKS.fetch_add(1, Ordering::Relaxed);
     }
 
     let (verdict_label, is_malicious) = if hybrid.context.attack && hybrid.context.confidence >= 75 {
@@ -123,7 +128,7 @@ pub async fn collect_event(
         "detection result"
     );
 
-    // --- 5. persiste evento + cria incidente se aplicavel ----------------
+    // --- 5. persiste ---
     let event = collector::collect(
         &state.db,
         state.default_tenant_id,
@@ -141,9 +146,8 @@ pub async fn collect_event(
     .await
     .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
 
-    // --- 6. publica no RabbitMQ (evento original + resultado deteccao) ---
+    // --- 6. RabbitMQ ---
     if let Some(producer) = &state.rabbitmq {
-        // 6a. evento original (mantem compatibilidade com consumidores antigos)
         let original = serde_json::json!({
             "event_id": event.id,
             "source": event.source,
@@ -155,7 +159,6 @@ pub async fn collect_event(
             tracing::warn!(error = %error, "failed to publish security event");
         }
 
-        // 6b. novo canal: resultado de deteccao (para SOAR, dashboards, etc.)
         let detection_msg = serde_json::json!({
             "event_id": event.id,
             "tenant_id": event.tenant_id,
@@ -166,7 +169,7 @@ pub async fn collect_event(
             "recommended_action": hybrid.context.recommended_action,
             "confidence": hybrid.context.confidence,
             "score": hybrid.score,
-            "source": hybrid.source,
+            "source": format!("{:?}", hybrid.source),
             "mitre": hybrid.mitre,
         });
 
@@ -177,7 +180,6 @@ pub async fn collect_event(
             tracing::warn!(error = %error, "failed to publish detection result");
         }
 
-        // 6c. se malicious, publica num canal dedicado para o incident-service
         if is_malicious {
             let alert = serde_json::json!({
                 "event_id": event.id,
@@ -188,7 +190,10 @@ pub async fn collect_event(
                 "auto_remediate": payload.auto_remediate.unwrap_or(false),
             });
 
-            if let Err(error) = producer.publish_detection("detection.alert", alert.to_string()).await {
+            if let Err(error) = producer
+                .publish_detection("detection.alert", alert.to_string())
+                .await
+            {
                 tracing::warn!(error = %error, "failed to publish detection alert");
             }
         }

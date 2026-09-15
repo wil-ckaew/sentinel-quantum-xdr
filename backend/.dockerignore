@@ -1,0 +1,15 @@
+target/
+**/target/
+*.bak
+*.bak2
+*.bak3
+*.old
+*.errado
+.git/
+.gitignore
+.idea/
+.vscode/
+*.md
+*.log
+docs/
+**/node_modules/
