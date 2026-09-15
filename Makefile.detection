@@ -1,0 +1,19 @@
+.PHONY: detection-up detection-down detection-logs detection-test
+
+detection-up:
+	docker compose up -d --build ml-inference detection-service
+
+detection-down:
+	docker compose rm -sf ml-inference detection-service
+
+detection-logs:
+	docker compose logs -f detection-service ml-inference
+
+detection-test:
+	./test-detection.sh
+
+detection-test-rust:
+	cd backend/detection-service && cargo test
+
+detection-test-python:
+	cd ml-inference && pytest -q tests/ || echo "(pytest opcional)"

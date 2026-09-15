@@ -1,0 +1,6 @@
+.env
+frontend/.next/
+frontend/node_modules/
+mobile/node_modules/
+backend/target/
+*.log

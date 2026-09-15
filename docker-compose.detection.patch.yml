@@ -1,0 +1,42 @@
+# Snippet para ADICIONAR ao seu docker-compose.yml existente.
+# Não substitui o arquivo inteiro — cole os serviços abaixo da seção `services:`.
+
+  ml-inference:
+    build:
+      context: ./ml-inference
+    container_name: sentinel-ml-inference
+    environment:
+      MODEL_PATH: /app/models/model.onnx
+      FEATURE_DIM: "256"
+      RUST_LOG: info
+    volumes:
+      - ./ml-inference/models:/app/models:ro
+    expose:
+      - "5000"
+    networks:
+      - default
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5000/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+
+  detection-service:
+    build:
+      context: ./backend/detection-service
+    container_name: sentinel-detection-service
+    depends_on:
+      ml-inference:
+        condition: service_healthy
+    environment:
+      PORT: "8090"
+      ML_API_URL: http://ml-inference:5000
+      ML_TIMEOUT_SECS: "5"
+      RULE_THRESHOLD: "0.70"
+      RUST_LOG: info
+    ports:
+      - "8090:8090"
+    networks:
+      - default
+    restart: unless-stopped

@@ -1,0 +1,70 @@
+[workspace]
+resolver = "2"
+
+members = [
+    "common",
+    "gateway",
+    "asset-service",
+    "incident-service",
+    "quantum-service",
+    "soar-engine",
+    "threat-intel",
+    "auth-service"
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Sentinel Quantum XDR"]
+license = "MIT"
+
+[workspace.dependencies]
+actix-web = "4.11"
+actix-cors = "0.7"
+actix-rt = "2.11"
+
+tokio = { version = "1.47", features = ["full"] }
+
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+uuid = { version = "1.18", features = ["v4", "serde"] }
+
+chrono = { version = "0.4", features = ["serde"] }
+
+sqlx = { version = "0.8", features = [
+    "runtime-tokio-rustls",
+    "postgres",
+    "uuid",
+    "chrono",
+    "json"
+] }
+
+thiserror = "2.0"
+anyhow = "1.0"
+
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "rustls-tls"
+] }
+
+jsonwebtoken = "9.3"
+
+argon2 = "0.5"
+
+redis = { version = "0.32", features = [
+    "tokio-comp"
+] }
+
+dotenvy = "0.15"
+
+async-trait = "0.1"
+
+validator = { version = "0.20", features = ["derive"] }
+
+rand = "0.9"
+sha2 = "0.10"
+hex = "0.4"

@@ -1,0 +1,17 @@
+[workspace]
+resolver = "2"
+
+members = [
+    "gateway",
+    "common",
+    "auth-service",
+    "asset-service",
+    "incident-service",
+    "threat-intel",
+    "soar-engine",
+    "quantum-service",
+    rand = "0.9",
+    thiserror = "2",
+    utoipa = "5",
+    utoipa-swagger-ui = { version = "9", features = ["axum"] }
+]
