@@ -8,3 +8,8 @@ backend/target/
 *.bak2
 *.snippet-broken.bak
 *.pre-detection.bak
+# Backups de iteração (não versionar)
+*.bak
+*.bak2
+*.snippet-broken.bak
+*.pre-detection.bak
