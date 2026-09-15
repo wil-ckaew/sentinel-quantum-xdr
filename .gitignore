@@ -1,22 +1,38 @@
+# =============================================================================
+# Sentinel Quantum XDR — .gitignore
+# =============================================================================
+
+# --- Ambiente ---
 .env
-frontend/.next/
-frontend/node_modules/
-mobile/node_modules/
+.env.local
+.env.*.local
+
+# --- Rust ---
 backend/target/
-*.log# Backups de iteração (não versionar)
-*.bak
-*.bak2
-*.snippet-broken.bak
-*.pre-detection.bak
-# Backups de iteração (não versionar)
-*.bak
-*.bak2
-*.snippet-broken.bak
-*.pre-detection.bak
-# Expo logs
+**/target/
+Cargo.lock.bak
+
+# --- Node ---
+node_modules/
+**/node_modules/
+frontend/.next/
+frontend/out/
 mobile/.expo/
 .expo/
-# Backups de iteração
+npm-debug.log*
+yarn-error.log*
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# --- Docker ---
+*.pid
+
+# --- Backups de iteração ---
 *.bak
 *.bak2
 *.bak3
@@ -24,7 +40,22 @@ mobile/.expo/
 *.snippet-broken.bak
 *.pre-detection.bak
 
-# Runtime
-mobile/.expo/
-.expo/
+# --- Runtime / logs ---
 *.log
+logs/
+
+# --- Gravação de demo ---
+demo.cast
+demo.mp4
+demo.gif
+demo.tape
+
+# --- IDE ---
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --- OS ---
+.DS_Store
+Thumbs.db
