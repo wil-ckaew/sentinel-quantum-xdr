@@ -186,6 +186,10 @@ async fn main() {
         .route("/api/agents/events", post(events::collect_event))
         .route("/api/soar/action", post(soar::handler::trigger_action))
         .route(
+            "/api/audit",
+            get(audit::handler::list_audit_logs),
+        )
+        .route(
             "/api/threat-intel",
             post(threat_intel::create_indicator).get(threat_intel::list_indicators),
         )

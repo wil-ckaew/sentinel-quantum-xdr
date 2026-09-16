@@ -107,8 +107,11 @@ export interface AuditLog {
   tenant_id?: string;
   user_id?: string;
   action: string;
-  resource: string;
-  metadata?: Record<string, unknown>;
+  resource?: string;
+  resource_id?: string;
+  ip_address?: string;
+  user_agent?: string;
+  metadata: Record<string, unknown>;
   created_at: string;
 }
 
@@ -184,15 +187,16 @@ export async function sendSecurityEvent(event: {
 // =============================================================================
 
 /** Busca audit logs do SOAR (opcional: filtra por resource/hostname). */
-export async function fetchAuditLogs(limit = 50, resource?: string): Promise<AuditLog[]> {
+export async function fetchAuditLogs(
+  limit = 50,
+  action?: string,
+  resource?: string
+): Promise<AuditLog[]> {
   const params = new URLSearchParams({ limit: String(limit) });
+  if (action) params.set("action", action);
   if (resource) params.set("resource", resource);
   const res = await fetch(`${API_URL}/api/audit?${params}`, { cache: "no-store" });
-  if (!res.ok) {
-    // Endpoint pode não existir ainda — devolve array vazio em vez de quebrar
-    if (res.status === 404) return [];
-    throw new Error("Falha ao buscar audit logs");
-  }
+  if (!res.ok) throw new Error("Falha ao buscar audit logs");
   return res.json();
 }
 
