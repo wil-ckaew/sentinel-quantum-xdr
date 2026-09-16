@@ -1,5 +1,16 @@
 # Sentinel Quantum XDR
 
+![CI](https://github.com/wil-ckaew/sentinel-quantum-xdr/actions/workflows/ci.yml/badge.svg)
+![License](https://img.shields.io/badge/license-MIT-blue)
+![Rust](https://img.shields.io/badge/rust-1.89-orange)
+![Python](https://img.shields.io/badge/python-3.12-blue)
+![Docker](https://img.shields.io/badge/docker-compose-blue)
+
+
+
+![demo](docs/demo.png)
+
+
 Plataforma XDR local para ingestao de telemetria de endpoint, rede, identidade e cloud, com classificacao MITRE ATT&CK, correlacao de eventos, incidentes e playbooks SOAR.
 
 ## Executar
