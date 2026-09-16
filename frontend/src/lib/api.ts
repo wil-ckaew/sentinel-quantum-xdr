@@ -60,6 +60,9 @@ export interface Incident {
   category?: string;
   source?: string;
   detected_at: string;
+  resolved_at?: string;
+  created_at: string;
+  updated_at: string;
   metadata?: {
     event_id?: string;
     hostname?: string;
@@ -295,5 +298,41 @@ export interface DetectionStatus {
 export async function fetchDetectionStatus(): Promise<DetectionStatus> {
   const res = await fetch(`${API_URL}/api/detection/status`, { cache: "no-store" });
   if (!res.ok) throw new Error("Falha ao buscar detection status");
+  return res.json();
+}
+
+// =============================================================================
+// Incident detail (com eventos + audit logs)
+// =============================================================================
+
+export interface RelatedEvent {
+  id: string;
+  source: string;
+  hostname?: string;
+  severity: string;
+  event_type: string;
+  category?: string;
+  message?: string;
+  processed: boolean;
+  created_at: string;
+}
+
+export interface IncidentAuditLog {
+  id: string;
+  action: string;
+  resource?: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface IncidentDetail {
+  incident: Incident;
+  events: RelatedEvent[];
+  audit_logs: IncidentAuditLog[];
+}
+
+export async function fetchIncidentDetail(id: string): Promise<IncidentDetail> {
+  const res = await fetch(`${API_URL}/api/incidents/${id}/detail`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Falha ao buscar detalhe do incidente");
   return res.json();
 }
