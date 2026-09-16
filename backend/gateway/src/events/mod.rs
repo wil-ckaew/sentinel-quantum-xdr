@@ -39,7 +39,15 @@ pub struct EventSummary {
     pub event_type: String,
     pub category: Option<String>,
     pub message: Option<String>,
+    pub processed: bool,
     pub created_at: chrono::NaiveDateTime,
+    // Campos enriquecidos via JOIN com incidents.metadata
+    pub attack: bool,
+    pub technique_id: Option<String>,
+    pub tactic: Option<String>,
+    pub confidence: Option<i32>,
+    pub recommended_action: Option<String>,
+    pub detection_source: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -55,13 +63,10 @@ pub struct SecurityEventRequest {
     pub message: Option<String>,
     #[serde(default = "default_payload")]
     pub payload: serde_json::Value,
-    /// Texto cru para analise ML. Se ausente, usa o `payload` serializado.
     #[serde(default)]
     pub payload_text: Option<String>,
-    /// MIME type, se conhecido.
     #[serde(default)]
     pub mime: Option<String>,
-    /// Tamanho em bytes, se conhecido.
     #[serde(default)]
     pub size: Option<u64>,
 }
@@ -78,16 +83,16 @@ pub async fn collect_event(
     State(state): State<AppState>,
     Json(payload): Json<SecurityEventRequest>,
 ) -> Result<Json<SecurityEvent>, (StatusCode, String)> {
-    // --- 1. metrica: evento recebido ---
+    // 1. métrica
     metrics::EVENTS_TOTAL.fetch_add(1, Ordering::Relaxed);
 
-    // --- 2. payload efetivo para deteccao ---
+    // 2. payload efetivo
     let payload_text = payload
         .payload_text
         .clone()
         .unwrap_or_else(|| payload.payload.to_string());
 
-    // --- 3. deteccao hibrida ---
+    // 3. detecção híbrida
     let hybrid = crate::detection::classify_hybrid(
         state.detection_client.as_deref(),
         &payload.event_type,
@@ -102,7 +107,7 @@ pub async fn collect_event(
     )
     .await;
 
-    // --- 4. metricas de deteccao ---
+    // 4. métricas de detecção
     metrics::DETECTIONS_TOTAL.fetch_add(1, Ordering::Relaxed);
 
     if let DetectionSource::LocalFallback = hybrid.source {
@@ -128,7 +133,7 @@ pub async fn collect_event(
         "detection result"
     );
 
-    // --- 5. persiste ---
+    // 5. persiste
     let event = collector::collect(
         &state.db,
         state.default_tenant_id,
@@ -146,7 +151,7 @@ pub async fn collect_event(
     .await
     .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
 
-    // --- 6. RabbitMQ ---
+    // 6. RabbitMQ
     if let Some(producer) = &state.rabbitmq {
         let original = serde_json::json!({
             "event_id": event.id,
@@ -212,12 +217,34 @@ pub async fn list_events(
     ))?;
     let limit = query.limit.unwrap_or(20).clamp(1, 100);
 
-    sqlx::query_as::<_, EventSummary>(
+    let rows = sqlx::query_as::<_, EventSummary>(
         r#"
-        SELECT id, source, hostname, severity, event_type, category, message, created_at
-        FROM security_events
-        WHERE tenant_id = $1
-        ORDER BY created_at DESC
+        SELECT
+            e.id,
+            e.source,
+            e.hostname,
+            e.severity,
+            e.event_type,
+            e.category,
+            e.message,
+            e.processed,
+            e.created_at,
+            CASE
+                WHEN i.metadata->'mitre'->>'confidence' IS NOT NULL
+                 AND (i.metadata->'mitre'->>'confidence')::int >= 75
+                THEN TRUE
+                ELSE FALSE
+            END AS attack,
+            i.metadata->'mitre'->>'technique_id' AS technique_id,
+            i.metadata->'mitre'->>'tactic' AS tactic,
+            NULLIF(i.metadata->'mitre'->>'confidence', '')::int AS confidence,
+            i.metadata->>'playbook' AS recommended_action,
+            i.metadata->'detection'->>'source' AS detection_source
+        FROM security_events e
+        LEFT JOIN incident_events ie ON ie.security_event_id = e.id
+        LEFT JOIN incidents i ON i.id = ie.incident_id
+        WHERE e.tenant_id = $1
+        ORDER BY e.created_at DESC
         LIMIT $2
         "#,
     )
@@ -225,6 +252,10 @@ pub async fn list_events(
     .bind(limit)
     .fetch_all(&state.db)
     .await
-    .map(Json)
-    .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))
+    .map_err(|error| {
+        tracing::error!(error = %error, "list_events query failed");
+        (StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
+    })?;
+
+    Ok(Json(rows))
 }

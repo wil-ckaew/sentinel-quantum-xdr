@@ -93,7 +93,7 @@ export interface SecurityEvent {
   correlation_id?: string;
   processed: boolean;
   created_at: string;
-  // Campos de detecção híbrida (não persistidos diretamente, mas devolvidos no POST)
+  // Campos de detecção híbrida (enriquecidos via JOIN com incidents.metadata)
   attack?: boolean;
   technique_id?: string;
   tactic?: string;

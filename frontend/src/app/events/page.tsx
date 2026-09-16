@@ -41,6 +41,8 @@ export default function EventsPage() {
   function inferVerdict(event: SecurityEvent): "malicious" | "suspicious" | "benign" {
     if (event.attack && (event.confidence ?? 0) >= 75) return "malicious";
     if (event.attack) return "suspicious";
+    // Eventos que viraram incidente (processed=true) são no mínimo suspeitos
+    if (event.processed) return "suspicious";
     return "benign";
   }
 

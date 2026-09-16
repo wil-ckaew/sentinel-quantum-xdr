@@ -59,3 +59,6 @@ demo.tape
 # --- OS ---
 .DS_Store
 Thumbs.db
+frontend/tsconfig.tsbuildinfo
+frontend/.next/
+frontend/node_modules/
