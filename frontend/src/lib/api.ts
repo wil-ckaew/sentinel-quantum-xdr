@@ -266,3 +266,34 @@ export async function updateAssetStatus(
   }
   return res.json();
 }
+
+// =============================================================================
+// Detection pipeline status
+// =============================================================================
+
+export interface ComponentStatus {
+  healthy: boolean;
+  latency_ms?: number;
+  error?: string;
+}
+
+export interface DetectionModelInfo {
+  name: string;
+  loaded: boolean;
+  feature_dim: number;
+}
+
+export interface DetectionStatus {
+  gateway: ComponentStatus;
+  detection_service: ComponentStatus;
+  ml_inference: ComponentStatus;
+  model?: DetectionModelInfo;
+  pipeline: { current_mode: string };
+  checked_at: string;
+}
+
+export async function fetchDetectionStatus(): Promise<DetectionStatus> {
+  const res = await fetch(`${API_URL}/api/detection/status`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Falha ao buscar detection status");
+  return res.json();
+}

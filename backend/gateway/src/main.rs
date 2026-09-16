@@ -9,6 +9,7 @@ mod cache;
 mod config;
 mod database;
 mod detection;
+mod detection_status;
 mod endpoints;
 mod events;
 mod incidents;
@@ -188,6 +189,10 @@ async fn main() {
         .route(
             "/api/audit",
             get(audit::handler::list_audit_logs),
+        )
+        .route(
+            "/api/detection/status",
+            get(detection_status::handler::detection_status),
         )
         .route(
             "/api/threat-intel",
