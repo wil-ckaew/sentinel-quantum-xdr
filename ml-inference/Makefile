@@ -1,12 +1,12 @@
 # Makefile — treino e verificação do modelo ONNX.
 #
 # Uso:
-#   make train              # treina (5000 amostras por classe)
-#   make train-large        # treina (20000 amostras por classe)
-#   make verify             # valida o ONNX
-#   make deploy             # rebuild + redeploy do container
-#   make all                # train + verify + deploy
-#   make clean              # remove modelo e métricas
+#   make train         treina modelo (5000/classe, 60 épocas)
+#   make train-large   treina modelo (20000/classe, 80 épocas)
+#   make verify        valida o ONNX
+#   make deploy        rebuild + redeploy do container
+#   make all           train + verify + deploy
+#   make clean         remove modelo e métricas
 
 IMAGE_TRAIN := sentinel-ml-train
 MODEL       := models/model.onnx
@@ -16,35 +16,36 @@ METRICS     := models/metrics.json
 
 help:
 	@echo "Targets:"
-	@echo "  train         treina modelo (5000/classe)"
-	@echo "  train-large   treina modelo (20000/classe)"
+	@echo "  train         treina modelo (5000/classe, 60 épocas)"
+	@echo "  train-large   treina modelo (20000/classe, 80 épocas)"
 	@echo "  verify        valida o ONNX exportado"
 	@echo "  deploy        rebuild + redeploy do container ml-inference"
 	@echo "  all           train + verify + deploy"
 	@echo "  clean         remove $(MODEL) e $(METRICS)"
 
-$(IMAGE_TRAIN):
+$(IMAGE_TRAIN): Dockerfile.train train_requirements.txt train.py verify.py
 	docker build -f Dockerfile.train -t $(IMAGE_TRAIN) .
 
 train: $(IMAGE_TRAIN)
-	@echo "==> Treinando modelo (5000/classe)..."
+	@echo "==> Treinando modelo (5000/classe, 60 épocas)..."
 	docker run --rm \
 		-v "$(PWD)/models:/app/models" \
 		$(IMAGE_TRAIN) \
 		python train.py --samples 5000 --epochs 60 --output models/model.onnx
 
 train-large: $(IMAGE_TRAIN)
-	@echo "==> Treinando modelo (20000/classe)..."
+	@echo "==> Treinando modelo (20000/classe, 80 épocas)..."
 	docker run --rm \
 		-v "$(PWD)/models:/app/models" \
 		$(IMAGE_TRAIN) \
-		python train.py --samples 20000 --output models/model.onnx
+		python train.py --samples 20000 --epochs 80 --output models/model.onnx
 
-verify:
+verify: $(IMAGE_TRAIN)
 	@echo "==> Verificando ONNX..."
 	docker run --rm \
 		-v "$(PWD)/models:/app/models:ro" \
 		-v "$(PWD)/verify.py:/app/verify.py:ro" \
+		-v "$(PWD)/train.py:/app/train.py:ro" \
 		$(IMAGE_TRAIN) \
 		python verify.py models/model.onnx
 

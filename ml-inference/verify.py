@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-verify.py — Valida modelo ONNX. Saída esperada: tensor[N, 2].
+verify.py — Valida modelo ONNX com amostras sintéticas do mesmo gerador
+do treino. Saída esperada: tensor[N, 2] = [P(benign), P(malicious)].
+
+Roda:
+    python verify.py [models/model.onnx]
 """
 from __future__ import annotations
 
@@ -10,17 +14,19 @@ from pathlib import Path
 import numpy as np
 import onnxruntime as ort
 
+# Importa os geradores do train.py (garante distribuição idêntica)
+sys.path.insert(0, str(Path(__file__).parent))
+from train import gen_benign, gen_malicious  # noqa: E402
 
-def predict_score(sess, X: np.ndarray) -> float:
-    """Retorna P(malicious) para a primeira amostra."""
+
+def predict_batch(sess, X: np.ndarray) -> np.ndarray:
+    """Retorna P(malicious) para cada amostra. Shape: [N]."""
     input_name = sess.get_inputs()[0].name
     outputs = sess.run(None, {input_name: X.astype(np.float32)})
     out = np.asarray(outputs[0])
-    # Esperado: shape [N, 2], coluna 1 = malicious
     if out.ndim == 2 and out.shape[1] == 2:
-        return float(out[0, 1])
-    # Fallback: último valor
-    return float(out.ravel()[-1])
+        return out[:, 1]
+    return out.ravel()
 
 
 def main() -> int:
@@ -39,34 +45,44 @@ def main() -> int:
     for out in sess.get_outputs():
         print(f"  {out.name}: shape={out.shape} type={out.type}")
 
-    # Teste 1: benigno (ASCII concentrado)
-    benign = np.zeros((1, 256), dtype=np.float32)
-    benign[0, 0x20:0x7F] = 1.0 / (0x7F - 0x20)
-    s_b = predict_score(sess, benign)
-    print(f"\nbenigno (texto ASCII): score={s_b:.4f}")
+    # --- Gera 200 amostras de cada classe, usando o mesmo gerador do treino ---
+    rng = np.random.default_rng(1234)  # seed diferente do treino
+    X_benign = gen_benign(200, rng)
+    X_mal = gen_malicious(200, rng)
 
-    # Teste 2: malicioso (uniforme)
-    malicious = np.ones((1, 256), dtype=np.float32) / 256.0
-    s_m = predict_score(sess, malicious)
-    print(f"malicioso (uniforme):  score={s_m:.4f}")
+    print(f"\nAvaliando 200 amostras por classe (mesmo gerador do treino):")
 
-    # Teste 3: shellcode (NOP sled)
-    shellcode = np.zeros((1, 256), dtype=np.float32)
-    shellcode[0, 0x90] = 0.5
-    shellcode[0, 0xCC] = 0.1
-    shellcode[0] += np.random.random(256) * 0.4 / 256
-    shellcode /= shellcode.sum()
-    s_s = predict_score(sess, shellcode)
-    print(f"shellcode (NOP sled):  score={s_s:.4f}")
+    s_benign = predict_batch(sess, X_benign)
+    s_mal = predict_batch(sess, X_mal)
 
-    print()
-    if s_b < 0.5 < s_m and s_s > 0.5:
-        print("✔ modelo separa benigno de malicioso")
+    # Métrica: score médio e taxa de acerto (threshold 0.5)
+    mean_b = float(s_benign.mean())
+    mean_m = float(s_mal.mean())
+    acc_b = float((s_benign < 0.5).mean())
+    acc_m = float((s_mal >= 0.5).mean())
+
+    print(f"  benigno:")
+    print(f"    score médio:      {mean_b:.4f}")
+    print(f"    min/max:          {s_benign.min():.4f} / {s_benign.max():.4f}")
+    print(f"    classificado ok:  {acc_b * 100:.1f}%")
+    print(f"  malicioso:")
+    print(f"    score médio:      {mean_m:.4f}")
+    print(f"    min/max:          {s_mal.min():.4f} / {s_mal.max():.4f}")
+    print(f"    classificado ok:  {acc_m * 100:.1f}%")
+
+    overall = (acc_b + acc_m) / 2
+    print(f"\n  accuracy combinada: {overall * 100:.1f}%")
+
+    # Critério: >= 85% de acerto em cada classe
+    ok = acc_b >= 0.85 and acc_m >= 0.85
+    if ok:
+        print("\n✔ modelo separa benigno de malicioso")
         return 0
-    print("✘ modelo NÃO separa classes")
-    print(f"  benigno={s_b:.4f} (esperado < 0.5)")
-    print(f"  malicioso={s_m:.4f} (esperado > 0.5)")
-    print(f"  shellcode={s_s:.4f} (esperado > 0.5)")
+    print("\n✘ modelo NÃO separa classes corretamente")
+    if acc_b < 0.85:
+        print(f"  benigno: {acc_b * 100:.1f}% (esperado >= 85%)")
+    if acc_m < 0.85:
+        print(f"  malicioso: {acc_m * 100:.1f}% (esperado >= 85%)")
     return 1
 
 
