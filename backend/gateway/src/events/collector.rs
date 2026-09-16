@@ -182,7 +182,7 @@ pub async fn collect(
 
                     // 1) tenta isolar asset existente
                     let affected = sqlx::query(
-                        "UPDATE assets SET status = 'ISOLATED', updated_at = NOW() \
+                        "UPDATE assets SET status = 'isolated', updated_at = NOW() \
                          WHERE tenant_id = $1 AND hostname = $2",
                     )
                     .bind(tenant)
@@ -195,7 +195,7 @@ pub async fn collect(
                     if affected == 0 {
                         sqlx::query(
                             "INSERT INTO assets (tenant_id, hostname, status, metadata) \
-                             VALUES ($1, $2, 'ISOLATED', $3)",
+                             VALUES ($1, $2, 'isolated', $3)",
                         )
                         .bind(tenant)
                         .bind(hostname)

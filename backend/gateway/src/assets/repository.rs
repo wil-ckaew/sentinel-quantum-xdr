@@ -109,3 +109,29 @@ pub async fn delete(
 
     Ok(result.rows_affected() > 0)
 }
+
+pub async fn update_status(
+    db: &PgPool,
+    tenant_id: Uuid,
+    id: Uuid,
+    status: &str,
+) -> Result<Option<Asset>> {
+
+    Ok(
+        sqlx::query_as::<_, Asset>(
+            r#"
+            UPDATE assets
+            SET status = $1,
+                updated_at = NOW()
+            WHERE id = $2
+              AND tenant_id = $3
+            RETURNING *
+            "#
+        )
+        .bind(status)
+        .bind(id)
+        .bind(tenant_id)
+        .fetch_optional(db)
+        .await?
+    )
+}

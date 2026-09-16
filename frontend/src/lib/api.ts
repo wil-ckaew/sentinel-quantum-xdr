@@ -241,3 +241,24 @@ export function relativeTime(value: string): string {
   if (seconds < 86400) return `${Math.round(seconds / 3600)}h atrás`;
   return `${Math.round(seconds / 86400)}d atrás`;
 }
+
+// =============================================================================
+// Assets — ações
+// =============================================================================
+
+/** Atualiza o status de um asset (ex.: reativar após isolamento SOAR). */
+export async function updateAssetStatus(
+  assetId: string,
+  status: "active" | "isolated" | "quarantined"
+): Promise<Asset> {
+  const res = await fetch(`${API_URL}/api/assets/${assetId}/status`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Falha ao atualizar asset: ${res.status} ${err}`);
+  }
+  return res.json();
+}

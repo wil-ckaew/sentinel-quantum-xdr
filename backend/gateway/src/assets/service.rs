@@ -12,7 +12,6 @@ pub async fn create(
     tenant_id: Uuid,
     payload: CreateAssetRequest,
 ) -> Result<crate::models::asset::Asset> {
-
     if payload.hostname.trim().is_empty() {
         return Err(anyhow!("hostname is required"));
     }
@@ -39,7 +38,6 @@ pub async fn list(
     db: &PgPool,
     tenant_id: Uuid,
 ) -> Result<Vec<crate::models::asset::Asset>> {
-
     repository::list(db, tenant_id).await
 }
 
@@ -48,7 +46,6 @@ pub async fn get(
     tenant_id: Uuid,
     id: Uuid,
 ) -> Result<crate::models::asset::Asset> {
-
     repository::find_by_id(db, tenant_id, id)
         .await?
         .ok_or_else(|| anyhow!("asset not found"))
@@ -59,10 +56,34 @@ pub async fn delete(
     tenant_id: Uuid,
     id: Uuid,
 ) -> Result<()> {
-
     if !repository::delete(db, tenant_id, id).await? {
         return Err(anyhow!("asset not found"));
     }
-
     Ok(())
+}
+
+/// Atualiza o status de um asset. Aceita apenas:
+///   - "active"
+///   - "isolated"
+///   - "quarantined"
+///
+/// Uso típico: reativar host após contenção automática do SOAR.
+pub async fn update_status(
+    db: &PgPool,
+    tenant_id: Uuid,
+    id: Uuid,
+    status: &str,
+) -> Result<crate::models::asset::Asset> {
+    let normalized = status.trim().to_lowercase();
+
+    if !matches!(normalized.as_str(), "active" | "isolated" | "quarantined") {
+        return Err(anyhow!(
+            "status inválido: '{}'. Use: active, isolated, quarantined",
+            status
+        ));
+    }
+
+    repository::update_status(db, tenant_id, id, &normalized)
+        .await?
+        .ok_or_else(|| anyhow!("asset not found"))
 }
