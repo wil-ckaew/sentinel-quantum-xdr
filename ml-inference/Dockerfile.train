@@ -1,0 +1,25 @@
+# Imagem isolada para treinar (PyTorch CPU-only).
+# Não vai para produção — produção usa só onnxruntime.
+FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       build-essential ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# PyTorch CPU-only (evita baixar CUDA ~5GB)
+RUN pip install --no-cache-dir \
+        --index-url https://download.pytorch.org/whl/cpu \
+        torch==2.4.1
+
+# ONNX + runtime
+RUN pip install --no-cache-dir \
+        numpy==2.1.1 \
+        onnx==1.17.0 \
+        onnxruntime==1.19.2
+
+COPY train.py verify.py ./
+
+CMD ["python", "train.py", "--samples", "5000", "--output", "models/model.onnx"]
