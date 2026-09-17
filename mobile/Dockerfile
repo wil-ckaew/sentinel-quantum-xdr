@@ -1,9 +1,19 @@
 FROM node:20-alpine
+
 WORKDIR /app
-ARG EXPO_PUBLIC_API_URL=http://10.0.2.2:8080
+
+RUN apk add --no-cache curl
+
+ARG EXPO_PUBLIC_API_URL=http://localhost:8080
 ENV EXPO_PUBLIC_API_URL=$EXPO_PUBLIC_API_URL
+ENV CI=1
+ENV EXPO_NO_TELEMETRY=1
+
 COPY package*.json ./
-RUN npm install
+RUN npm install --prefer-offline --no-audit --no-fund
+
 COPY . .
+
 EXPOSE 8081
-CMD ["npx", "expo", "start", "--web"]
+
+CMD ["npx", "expo", "start", "--web", "--port", "8081"]
