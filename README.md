@@ -54,6 +54,14 @@ Plataforma XDR (Extended Detection and Response) com **detecção híbrida** —
 ![Detection](docs/screenshots/05-detection.png)
 *Status dos 3 componentes (gateway, detection-service, ml-inference) + modelo ONNX.*
 
+### Mobile (Expo)
+
+<img src="docs/screenshots/mobile-dashboard.png" alt="Mobile Dashboard" width="360" />
+
+*App mobile com Dashboard, Eventos, Incidentes e Ativos. Mesmo backend do web.*
+
+
+
 ---
 
 ## Arquitetura
