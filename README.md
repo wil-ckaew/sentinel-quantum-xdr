@@ -56,9 +56,7 @@ Plataforma XDR (Extended Detection and Response) com **detecção híbrida** —
 
 ### Mobile (Expo)
 
-<img src="docs/screenshots/mobile-dashboard.png" alt="Mobile Dashboard" width="360" />
-
-*App mobile com Dashboard, Eventos, Incidentes e Ativos. Mesmo backend do web.*
+App mobile com Dashboard, Eventos, Incidentes e Ativos. Mesmo backend do web. Acesse em `http://localhost:8081`.
 
 
 
