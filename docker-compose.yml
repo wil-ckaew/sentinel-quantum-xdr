@@ -123,7 +123,7 @@ services:
     build:
       context: ./mobile
       args:
-        EXPO_PUBLIC_API_URL: ${EXPO_PUBLIC_API_URL:-http://10.0.2.2:${GATEWAY_PORT:-8080}}
+        EXPO_PUBLIC_API_URL: ${EXPO_PUBLIC_API_URL:-http://localhost:${GATEWAY_PORT:-8080}}
     container_name: sentinel-mobile
     ports:
       - "${MOBILE_PORT:-8081}:8081"

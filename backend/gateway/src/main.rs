@@ -206,6 +206,7 @@ async fn main() {
                     Method::POST,
                     Method::PUT,
                     Method::DELETE,
+                    Method::PATCH,
                 ])
                 .allow_headers(tower_http::cors::Any)
                 .allow_origin(tower_http::cors::Any),
